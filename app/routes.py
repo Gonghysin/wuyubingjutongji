@@ -1,6 +1,10 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, send_file, jsonify
 from .models import db, Rating, User
 from functools import wraps
+import logging
+import pandas as pd
+import io
+from datetime import datetime
 
 main = Blueprint('main', __name__)
 
@@ -43,15 +47,32 @@ def index():
     current_user = User.query.get(session['user_id'])
     # 获取所有需要评分的用户（除了自己）
     users_to_rate = User.query.filter(User.id != current_user.id).all()
-    return render_template('index.html', users=users_to_rate)
+    
+    # 获取当前用户已评分的学生ID列表
+    rated_student_ids = db.session.query(Rating.rated_student_id).filter(
+        Rating.student_id == current_user.id
+    ).all()
+    rated_student_ids = [r[0] for r in rated_student_ids]
+    
+    return render_template('index.html', users=users_to_rate, rated_student_ids=rated_student_ids)
 
 @main.route('/rate/<int:student_id>', methods=['GET', 'POST'])
 @login_required
 def rate(student_id):
+    current_user = User.query.get(session['user_id'])
+    rated_user = User.query.get_or_404(student_id)
+    
+    # 检查是否已经评分
+    existing_rating = Rating.query.filter_by(
+        student_id=current_user.id,
+        rated_student_id=rated_user.id
+    ).first()
+    
+    if existing_rating:
+        flash('您已经对该同学评过分，不能重复评分', 'warning')
+        return redirect(url_for('main.index'))
+    
     if request.method == 'POST':
-        current_user = User.query.get(session['user_id'])
-        rated_user = User.query.get_or_404(student_id)
-        
         # 获取评分数据
         moral = request.form.get('moral')
         intelligence = request.form.get('intelligence')
@@ -77,13 +98,116 @@ def rate(student_id):
             return redirect(url_for('main.index'))
         except Exception as e:
             db.session.rollback()
-            flash('评分失败，请重试！', 'error')
+            error_msg = str(e)
+            print(f"评分失败: {error_msg}")  # 控制台日志
+            flash(f'评分失败: {error_msg}', 'error')
     
-    rated_user = User.query.get_or_404(student_id)
     return render_template('rate.html', student=rated_user)
 
 @main.route('/results')
 @login_required
 def results():
-    users = User.query.all()
-    return render_template('results.html', users=users) 
+    students = User.query.all()
+    return render_template('results.html', students=students)
+
+@main.route('/export_results')
+@login_required
+def export_results():
+    # 获取所有学生
+    students = User.query.all()
+    
+    # 准备数据
+    data = []
+    for student in students:
+        # 获取该学生的所有评分
+        received_ratings = student.received_ratings
+        
+        # 统计各维度的评分
+        dimensions = ['moral', 'intelligence', 'physical', 'aesthetic', 'labor']
+        stats = {}
+        
+        for dim in dimensions:
+            ratings = [getattr(r, dim) for r in received_ratings]
+            if ratings:
+                stats[dim] = {
+                    'A': ratings.count('A'),
+                    'B': ratings.count('B'),
+                    'C': ratings.count('C'),
+                    'D': ratings.count('D'),
+                    'total': len(ratings)
+                }
+            else:
+                stats[dim] = {'A': 0, 'B': 0, 'C': 0, 'D': 0, 'total': 0}
+        
+        # 添加到数据列表
+        data.append({
+            '学号': student.student_id,
+            '姓名': student.name,
+            '德育评分总数': stats['moral']['total'],
+            '德育A': stats['moral']['A'],
+            '德育B': stats['moral']['B'],
+            '德育C': stats['moral']['C'],
+            '德育D': stats['moral']['D'],
+            '智育评分总数': stats['intelligence']['total'],
+            '智育A': stats['intelligence']['A'],
+            '智育B': stats['intelligence']['B'],
+            '智育C': stats['intelligence']['C'],
+            '智育D': stats['intelligence']['D'],
+            '体育评分总数': stats['physical']['total'],
+            '体育A': stats['physical']['A'],
+            '体育B': stats['physical']['B'],
+            '体育C': stats['physical']['C'],
+            '体育D': stats['physical']['D'],
+            '美育评分总数': stats['aesthetic']['total'],
+            '美育A': stats['aesthetic']['A'],
+            '美育B': stats['aesthetic']['B'],
+            '美育C': stats['aesthetic']['C'],
+            '美育D': stats['aesthetic']['D'],
+            '劳动评分总数': stats['labor']['total'],
+            '劳动A': stats['labor']['A'],
+            '劳动B': stats['labor']['B'],
+            '劳动C': stats['labor']['C'],
+            '劳动D': stats['labor']['D']
+        })
+    
+    # 创建DataFrame
+    df = pd.DataFrame(data)
+    
+    # 创建Excel文件
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='评分统计')
+    
+    # 准备文件下载
+    output.seek(0)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f'班级互评统计结果_{timestamp}.xlsx'
+    
+    return send_file(
+        output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=filename
+    )
+
+@main.route('/get_rating_details/<int:student_id>')
+@login_required
+def get_rating_details(student_id):
+    student = User.query.get_or_404(student_id)
+    received_ratings = student.received_ratings
+    
+    details = []
+    for rating in received_ratings:
+        rater = User.query.get(rating.student_id)
+        details.append({
+            'rater_name': rater.name,
+            'rater_id': rater.student_id,
+            'moral': rating.moral,
+            'intelligence': rating.intelligence,
+            'physical': rating.physical,
+            'aesthetic': rating.aesthetic,
+            'labor': rating.labor,
+            'created_at': rating.created_at.strftime('%Y-%m-%d %H:%M:%S')
+        })
+    
+    return jsonify(details) 

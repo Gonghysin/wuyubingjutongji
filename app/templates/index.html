@@ -16,6 +16,7 @@
                             <tr>
                                 <th>学号</th>
                                 <th>姓名</th>
+                                <th>状态</th>
                                 <th>操作</th>
                             </tr>
                         </thead>
@@ -25,9 +26,20 @@
                                 <td>{{ student.student_id }}</td>
                                 <td>{{ student.name }}</td>
                                 <td>
-                                    <a href="{{ url_for('main.rate', student_id=student.id) }}" class="btn btn-primary btn-sm">
-                                        评分
-                                    </a>
+                                    {% if student.id in rated_student_ids %}
+                                        <span class="badge bg-success">已评分</span>
+                                    {% else %}
+                                        <span class="badge bg-warning">未评分</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if student.id in rated_student_ids %}
+                                        <button class="btn btn-secondary btn-sm" disabled>已完成评分</button>
+                                    {% else %}
+                                        <a href="{{ url_for('main.rate', student_id=student.id) }}" class="btn btn-primary btn-sm">
+                                            去评分
+                                        </a>
+                                    {% endif %}
                                 </td>
                             </tr>
                             {% endfor %}
