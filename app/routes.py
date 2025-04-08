@@ -46,8 +46,8 @@ def logout():
 @login_required
 def index():
     current_user = User.query.get(session['user_id'])
-    # 获取所有需要评分的用户（除了自己）
-    users_to_rate = User.query.filter(User.id != current_user.id).all()
+    # 获取所有用户（包括自己）
+    users_to_rate = User.query.all()
     
     # 获取当前用户已评分的学生ID列表
     rated_student_ids = db.session.query(Rating.rated_student_id).filter(
@@ -113,7 +113,7 @@ def rate(student_id):
             print(f"评分失败: {error_msg}")
             flash(f'评分失败: {error_msg}', 'error')
     
-    return render_template('rate.html', student=rated_user, existing_rating=existing_rating)
+    return render_template('rate.html', student=rated_user, existing_rating=existing_rating, current_user=current_user)
 
 @main.route('/lock_ratings')
 @login_required

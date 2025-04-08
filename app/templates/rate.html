@@ -2,7 +2,7 @@
 
 {% block content %}
 <div class="container mt-4">
-    <h2>评价 {{ student.name }}</h2>
+    <h2>{% if student.id == current_user.id %}给自己评分{% else %}评价 {{ student.name }}{% endif %}</h2>
     <form method="POST" class="mt-4" id="ratingForm">
         <div class="row">
             <div class="col-md-6">
