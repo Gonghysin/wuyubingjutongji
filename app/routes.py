@@ -287,4 +287,27 @@ def clear_student_ratings(student_id):
     except Exception as e:
         db.session.rollback()
         logging.error(f"清除评分失败: {str(e)}")
-        return jsonify({'message': f'清除评分失败: {str(e)}'}), 500 
+        return jsonify({'message': f'清除评分失败: {str(e)}'}), 500
+
+@main.route('/admin/unlock_student/<int:student_id>', methods=['POST'])
+@login_required
+def unlock_student(student_id):
+    # 获取要解锁的学生
+    student = User.query.get_or_404(student_id)
+    
+    try:
+        # 检查学生是否已经解锁
+        if not student.locked:
+            return jsonify({'message': f'该学生（{student.name}）的评分未锁定'}), 400
+        
+        # 解锁学生评分
+        student.locked = False
+        db.session.commit()
+        
+        # 返回成功消息
+        return jsonify({'message': f'已成功解锁 {student.name} 的评分状态'})
+    
+    except Exception as e:
+        db.session.rollback()
+        logging.error(f"解锁失败: {str(e)}")
+        return jsonify({'message': f'解锁失败: {str(e)}'}), 500 
