@@ -1,8 +1,6 @@
-from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
-
-db = SQLAlchemy()
+from . import db
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -10,6 +8,7 @@ class User(db.Model):
     password_hash = db.Column(db.String(128))
     name = db.Column(db.String(50), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    locked = db.Column(db.Boolean, default=False)  # 添加锁定状态字段
     
     # 关系
     self_ratings = db.relationship('Rating', backref='student', foreign_keys='Rating.student_id')
