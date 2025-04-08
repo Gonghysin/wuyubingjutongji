@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="mb-4">评分结果统计</h1>
+
+<div class="card">
+    <div class="card-header">
+        <h5 class="card-title mb-0">评分统计</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>学生姓名</th>
+                        <th>德育</th>
+                        <th>智育</th>
+                        <th>体育</th>
+                        <th>美育</th>
+                        <th>劳动</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for student in students %}
+                    <tr>
+                        <td>{{ student.name }}</td>
+                        <td>
+                            {% set moral_ratings = student.received_ratings|map(attribute='moral')|list %}
+                            {% if moral_ratings %}
+                                {{ (moral_ratings|length) }}个评分
+                                <br>
+                                <small class="text-muted">
+                                    A: {{ moral_ratings.count('A') }} |
+                                    B: {{ moral_ratings.count('B') }} |
+                                    C: {{ moral_ratings.count('C') }} |
+                                    D: {{ moral_ratings.count('D') }}
+                                </small>
+                            {% else %}
+                                暂无评分
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% set intelligence_ratings = student.received_ratings|map(attribute='intelligence')|list %}
+                            {% if intelligence_ratings %}
+                                {{ (intelligence_ratings|length) }}个评分
+                                <br>
+                                <small class="text-muted">
+                                    A: {{ intelligence_ratings.count('A') }} |
+                                    B: {{ intelligence_ratings.count('B') }} |
+                                    C: {{ intelligence_ratings.count('C') }} |
+                                    D: {{ intelligence_ratings.count('D') }}
+                                </small>
+                            {% else %}
+                                暂无评分
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% set physical_ratings = student.received_ratings|map(attribute='physical')|list %}
+                            {% if physical_ratings %}
+                                {{ (physical_ratings|length) }}个评分
+                                <br>
+                                <small class="text-muted">
+                                    A: {{ physical_ratings.count('A') }} |
+                                    B: {{ physical_ratings.count('B') }} |
+                                    C: {{ physical_ratings.count('C') }} |
+                                    D: {{ physical_ratings.count('D') }}
+                                </small>
+                            {% else %}
+                                暂无评分
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% set aesthetic_ratings = student.received_ratings|map(attribute='aesthetic')|list %}
+                            {% if aesthetic_ratings %}
+                                {{ (aesthetic_ratings|length) }}个评分
+                                <br>
+                                <small class="text-muted">
+                                    A: {{ aesthetic_ratings.count('A') }} |
+                                    B: {{ aesthetic_ratings.count('B') }} |
+                                    C: {{ aesthetic_ratings.count('C') }} |
+                                    D: {{ aesthetic_ratings.count('D') }}
+                                </small>
+                            {% else %}
+                                暂无评分
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% set labor_ratings = student.received_ratings|map(attribute='labor')|list %}
+                            {% if labor_ratings %}
+                                {{ (labor_ratings|length) }}个评分
+                                <br>
+                                <small class="text-muted">
+                                    A: {{ labor_ratings.count('A') }} |
+                                    B: {{ labor_ratings.count('B') }} |
+                                    C: {{ labor_ratings.count('C') }} |
+                                    D: {{ labor_ratings.count('D') }}
+                                </small>
+                            {% else %}
+                                暂无评分
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %} 
