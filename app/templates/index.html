@@ -4,15 +4,18 @@
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2>班级互评</h2>
-        {% if not current_user.locked %}
-            <a href="{{ url_for('main.lock_ratings') }}" class="btn btn-warning" onclick="return confirm('确定要锁定评价吗？锁定后将无法修改。')">
-                锁定评价
-            </a>
-        {% else %}
-            <div class="alert alert-info">
-                您的评价已锁定，无法修改
-            </div>
-        {% endif %}
+        <div>
+            {% if not current_user.locked %}
+                <button type="button" class="btn btn-success me-2" onclick="rateAllA()">一键全选A</button>
+                <a href="{{ url_for('main.lock_ratings') }}" class="btn btn-warning" onclick="return confirm('确定要锁定评价吗？锁定后将无法修改。')">
+                    锁定评价
+                </a>
+            {% else %}
+                <div class="alert alert-info">
+                    您的评价已锁定，无法修改
+                </div>
+            {% endif %}
+        </div>
     </div>
 
     <div class="row">
@@ -40,4 +43,42 @@
         {% endfor %}
     </div>
 </div>
+
+<script>
+function rateAllA() {
+    if (!confirm('确定要给所有未评价的同学评A吗？')) {
+        return;
+    }
+    
+    // 获取所有未评价的同学链接
+    const links = document.querySelectorAll('a[href^="/rate/"]');
+    let completed = 0;
+    const total = links.length;
+    
+    links.forEach(link => {
+        const studentId = link.getAttribute('href').split('/')[2];
+        // 发送POST请求
+        fetch(`/rate/${studentId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: 'moral=A&intelligence=A&physical=A&aesthetic=A&labor=A'
+        })
+        .then(response => {
+            if (response.ok) {
+                completed++;
+                if (completed === total) {
+                    alert('所有同学评价完成！');
+                    window.location.reload();
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('评价过程中出现错误，请重试');
+        });
+    });
+}
+</script>
 {% endblock %}
