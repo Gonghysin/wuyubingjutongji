@@ -1,5 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, send_file, jsonify
-from .models import db, Rating, User
+from .models import Rating, User
+from . import db
 from functools import wraps
 import logging
 import pandas as pd
@@ -45,8 +46,8 @@ def logout():
 @login_required
 def index():
     current_user = User.query.get(session['user_id'])
-    # 获取所有需要评分的用户（除了自己）
-    users_to_rate = User.query.filter(User.id != current_user.id).all()
+    # 获取所有用户（包括自己）
+    users_to_rate = User.query.all()
     
     # 获取当前用户已评分的学生ID列表
     rated_student_ids = db.session.query(Rating.rated_student_id).filter(
@@ -54,7 +55,7 @@ def index():
     ).all()
     rated_student_ids = [r[0] for r in rated_student_ids]
     
-    return render_template('index.html', users=users_to_rate, rated_student_ids=rated_student_ids)
+    return render_template('index.html', users=users_to_rate, rated_student_ids=rated_student_ids, current_user=current_user)
 
 @main.route('/rate/<int:student_id>', methods=['GET', 'POST'])
 @login_required
@@ -62,15 +63,16 @@ def rate(student_id):
     current_user = User.query.get(session['user_id'])
     rated_user = User.query.get_or_404(student_id)
     
+    # 检查用户是否已锁定
+    if current_user.locked:
+        flash('您的评价已锁定，无法修改', 'warning')
+        return redirect(url_for('main.index'))
+    
     # 检查是否已经评分
     existing_rating = Rating.query.filter_by(
         student_id=current_user.id,
         rated_student_id=rated_user.id
     ).first()
-    
-    if existing_rating:
-        flash('您已经对该同学评过分，不能重复评分', 'warning')
-        return redirect(url_for('main.index'))
     
     if request.method == 'POST':
         # 获取评分数据
@@ -80,29 +82,72 @@ def rate(student_id):
         aesthetic = request.form.get('aesthetic')
         labor = request.form.get('labor')
         
-        # 创建评分记录
-        rating = Rating(
-            student_id=current_user.id,
-            rated_student_id=rated_user.id,
-            moral=moral,
-            intelligence=intelligence,
-            physical=physical,
-            aesthetic=aesthetic,
-            labor=labor
-        )
+        if existing_rating:
+            # 更新现有评分
+            existing_rating.moral = moral
+            existing_rating.intelligence = intelligence
+            existing_rating.physical = physical
+            existing_rating.aesthetic = aesthetic
+            existing_rating.labor = labor
+            flash('评分已更新！', 'success')
+        else:
+            # 创建新评分
+            rating = Rating(
+                student_id=current_user.id,
+                rated_student_id=rated_user.id,
+                moral=moral,
+                intelligence=intelligence,
+                physical=physical,
+                aesthetic=aesthetic,
+                labor=labor
+            )
+            db.session.add(rating)
+            flash('评分成功！', 'success')
         
         try:
-            db.session.add(rating)
             db.session.commit()
-            flash('评分成功！', 'success')
             return redirect(url_for('main.index'))
         except Exception as e:
             db.session.rollback()
             error_msg = str(e)
-            print(f"评分失败: {error_msg}")  # 控制台日志
+            print(f"评分失败: {error_msg}")
             flash(f'评分失败: {error_msg}', 'error')
     
-    return render_template('rate.html', student=rated_user)
+    return render_template('rate.html', student=rated_user, existing_rating=existing_rating, current_user=current_user)
+
+@main.route('/lock_ratings')
+@login_required
+def lock_ratings():
+    current_user = User.query.get(session['user_id'])
+    
+    # 检查是否已经锁定
+    if current_user.locked:
+        flash('您的评价已经锁定', 'warning')
+        return redirect(url_for('main.index'))
+    
+    # 获取所有需要评分的用户（除了自己）
+    users_to_rate = User.query.filter(User.id != current_user.id).all()
+    
+    # 检查是否已经完成所有评价
+    for user in users_to_rate:
+        rating = Rating.query.filter_by(
+            student_id=current_user.id,
+            rated_student_id=user.id
+        ).first()
+        if not rating:
+            flash('您还未完成所有评价，无法锁定', 'warning')
+            return redirect(url_for('main.index'))
+    
+    # 锁定评价
+    current_user.locked = True
+    try:
+        db.session.commit()
+        flash('评价已锁定，无法再修改', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash('锁定失败，请重试', 'error')
+    
+    return redirect(url_for('main.index'))
 
 @main.route('/results')
 @login_required
@@ -210,4 +255,59 @@ def get_rating_details(student_id):
             'created_at': rating.created_at.strftime('%Y-%m-%d %H:%M:%S')
         })
     
-    return jsonify(details) 
+    return jsonify(details)
+
+@main.route('/admin/clear_ratings/<int:student_id>', methods=['POST'])
+@login_required
+def clear_student_ratings(student_id):
+    # 获取要清除评分的学生
+    student = User.query.get_or_404(student_id)
+    
+    try:
+        # 查找该学生提交的所有评分
+        ratings = Rating.query.filter_by(student_id=student_id).all()
+        
+        if not ratings:
+            return jsonify({'message': f'该学生（{student.name}）没有提交任何评分记录'}), 404
+        
+        # 删除评分记录
+        count = 0
+        for rating in ratings:
+            db.session.delete(rating)
+            count += 1
+        
+        # 解锁该学生的评分状态
+        student.locked = False
+        
+        db.session.commit()
+        
+        # 返回成功消息
+        return jsonify({'message': f'成功清除 {student.name} 提交的 {count} 条评分记录，并已解锁评分状态', 'count': count})
+    
+    except Exception as e:
+        db.session.rollback()
+        logging.error(f"清除评分失败: {str(e)}")
+        return jsonify({'message': f'清除评分失败: {str(e)}'}), 500
+
+@main.route('/admin/unlock_student/<int:student_id>', methods=['POST'])
+@login_required
+def unlock_student(student_id):
+    # 获取要解锁的学生
+    student = User.query.get_or_404(student_id)
+    
+    try:
+        # 检查学生是否已经解锁
+        if not student.locked:
+            return jsonify({'message': f'该学生（{student.name}）的评分未锁定'}), 400
+        
+        # 解锁学生评分
+        student.locked = False
+        db.session.commit()
+        
+        # 返回成功消息
+        return jsonify({'message': f'已成功解锁 {student.name} 的评分状态'})
+    
+    except Exception as e:
+        db.session.rollback()
+        logging.error(f"解锁失败: {str(e)}")
+        return jsonify({'message': f'解锁失败: {str(e)}'}), 500 
