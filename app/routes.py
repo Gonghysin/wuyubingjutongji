@@ -276,10 +276,13 @@ def clear_student_ratings(student_id):
             db.session.delete(rating)
             count += 1
         
+        # 解锁该学生的评分状态
+        student.locked = False
+        
         db.session.commit()
         
         # 返回成功消息
-        return jsonify({'message': f'成功清除 {student.name} 提交的 {count} 条评分记录', 'count': count})
+        return jsonify({'message': f'成功清除 {student.name} 提交的 {count} 条评分记录，并已解锁评分状态', 'count': count})
     
     except Exception as e:
         db.session.rollback()
