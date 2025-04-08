@@ -68,21 +68,4 @@
         </div>
     </form>
 </div>
-
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // 一键全选A按钮
-    const allAButton = document.createElement('button');
-    allAButton.type = 'button';
-    allAButton.className = 'btn btn-success mt-3';
-    allAButton.textContent = '一键全选A';
-    allAButton.onclick = function() {
-        const selects = document.querySelectorAll('select');
-        selects.forEach(select => {
-            select.value = 'A';
-        });
-    };
-    document.querySelector('.mt-4').appendChild(allAButton);
-});
-</script>
 {% endblock %} 
