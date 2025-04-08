@@ -255,4 +255,33 @@ def get_rating_details(student_id):
             'created_at': rating.created_at.strftime('%Y-%m-%d %H:%M:%S')
         })
     
-    return jsonify(details) 
+    return jsonify(details)
+
+@main.route('/admin/clear_ratings/<int:student_id>', methods=['POST'])
+@login_required
+def clear_student_ratings(student_id):
+    # 获取要清除评分的学生
+    student = User.query.get_or_404(student_id)
+    
+    try:
+        # 查找该学生提交的所有评分
+        ratings = Rating.query.filter_by(student_id=student_id).all()
+        
+        if not ratings:
+            return jsonify({'message': f'该学生（{student.name}）没有提交任何评分记录'}), 404
+        
+        # 删除评分记录
+        count = 0
+        for rating in ratings:
+            db.session.delete(rating)
+            count += 1
+        
+        db.session.commit()
+        
+        # 返回成功消息
+        return jsonify({'message': f'成功清除 {student.name} 提交的 {count} 条评分记录', 'count': count})
+    
+    except Exception as e:
+        db.session.rollback()
+        logging.error(f"清除评分失败: {str(e)}")
+        return jsonify({'message': f'清除评分失败: {str(e)}'}), 500 
