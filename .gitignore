@@ -173,5 +173,5 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-光实2401名单 最新.xlsx/
-*.xlsx
+~$*.xlsx
+*.tmp
