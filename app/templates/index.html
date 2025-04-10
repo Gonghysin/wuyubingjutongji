@@ -37,7 +37,6 @@
             <div class="card">
                 <div class="card-body">
                     <h5 class="card-title">{{ user.name }}</h5>
-                    <p class="card-text">学号：{{ user.student_id }}</p>
                     {% if user.id in rated_student_ids %}
                         <div class="alert alert-success">
                             已评价

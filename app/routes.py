@@ -329,13 +329,14 @@ def results():
 
 @main.route('/export_results')
 @login_required
+@monitor_required
 def export_results():
     current_user = User.query.get(session['user_id'])
     
     # 如果用户没有班级，提示用户联系班长
     if not current_user.class_id:
         flash('您尚未被分配到班级，请联系班长', 'warning')
-        return redirect(url_for('main.results'))
+        return redirect(url_for('main.monitor_dashboard'))
     
     # 只获取当前用户所在班级的学生
     students = User.query.filter_by(class_id=current_user.class_id).all()
@@ -435,7 +436,6 @@ def get_rating_details(student_id):
         rater = User.query.get(rating.student_id)
         details.append({
             'rater_name': rater.name,
-            'rater_id': rater.student_id,
             'moral': rating.moral,
             'intelligence': rating.intelligence,
             'physical': rating.physical,
