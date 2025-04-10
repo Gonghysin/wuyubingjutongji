@@ -1,5 +1,5 @@
 #!/bin/bash
-
+# conda activate wuyubingjutongji
 # 确保日志目录存在
 mkdir -p logs
 

@@ -435,7 +435,6 @@ def get_rating_details(student_id):
         rater = User.query.get(rating.student_id)
         details.append({
             'rater_name': rater.name,
-            'rater_id': rater.student_id,
             'moral': rating.moral,
             'intelligence': rating.intelligence,
             'physical': rating.physical,

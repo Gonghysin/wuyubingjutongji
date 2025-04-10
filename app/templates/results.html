@@ -147,7 +147,6 @@
                         <thead>
                             <tr>
                                 <th>评分人</th>
-                                <th>学号</th>
                                 <th>德育</th>
                                 <th>智育</th>
                                 <th>体育</th>
@@ -210,7 +209,7 @@
                     <label>选择学生：</label>
                     <select class="form-select" id="studentSelect">
                         {% for student in students %}
-                        <option value="{{ student.id }}">{{ student.name }} ({{ student.student_id }}) {% if student.locked %}[已锁定]{% endif %}</option>
+                        <option value="{{ student.id }}">{{ student.name }} {% if student.locked %}[已锁定]{% endif %}</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -258,7 +257,6 @@ function showRatingDetails(studentId) {
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>${rating.rater_name}</td>
-                    <td>${rating.rater_id}</td>
                     <td>${rating.moral}</td>
                     <td>${rating.intelligence}</td>
                     <td>${rating.physical}</td>
