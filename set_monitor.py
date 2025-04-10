@@ -22,7 +22,9 @@ def set_monitor(student_id):
         
         try:
             db.session.commit()
+            monitor_password = student.student_id[-5:]
             print(f"成功: 已将 {student.name} (学号: {student.student_id}) 设置为班长")
+            print(f"班长管理密码: {monitor_password} (学号后5位)")
             return True
         except Exception as e:
             db.session.rollback()

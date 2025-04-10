@@ -36,6 +36,7 @@
                             <th>学号</th>
                             <th>姓名</th>
                             <th>状态</th>
+                            <th>操作</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -71,6 +72,7 @@
                             <th>学号</th>
                             <th>姓名</th>
                             <th>状态</th>
+                            <th>操作</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -84,6 +86,20 @@
                                 {% else %}
                                 <span class="badge bg-warning">未锁定评分</span>
                                 {% endif %}
+                            </td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    {% if student.locked %}
+                                    <button class="btn btn-outline-warning btn-sm unlock-student" data-student-id="{{ student.id }}" data-student-name="{{ student.name }}">
+                                        <i class="fas fa-unlock"></i> 解锁评分
+                                    </button>
+                                    {% endif %}
+                                    {% if not student.id == current_user.id %}
+                                    <button class="btn btn-outline-danger btn-sm clear-ratings" data-student-id="{{ student.id }}" data-student-name="{{ student.name }}">
+                                        <i class="fas fa-trash-alt"></i> 清除评分
+                                    </button>
+                                    {% endif %}
+                                </div>
                             </td>
                         </tr>
                         {% endfor %}
@@ -102,4 +118,66 @@
     </div>
     {% endif %}
 </div>
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // 解锁学生评分功能
+        const unlockButtons = document.querySelectorAll('.unlock-student');
+        unlockButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                const studentId = this.getAttribute('data-student-id');
+                const studentName = this.getAttribute('data-student-name');
+                
+                if (confirm(`确定要解锁 ${studentName} 的评分状态吗？`)) {
+                    // 发送解锁请求
+                    fetch(`/admin/unlock_student/${studentId}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        alert(data.message);
+                        location.reload(); // 刷新页面
+                    })
+                    .catch(error => {
+                        console.error('解锁失败:', error);
+                        alert('操作失败，请重试');
+                    });
+                }
+            });
+        });
+
+        // 清除学生评分功能
+        const clearButtons = document.querySelectorAll('.clear-ratings');
+        clearButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                const studentId = this.getAttribute('data-student-id');
+                const studentName = this.getAttribute('data-student-name');
+                
+                if (confirm(`确定要清除 ${studentName} 的所有评分记录吗？此操作不可恢复！`)) {
+                    // 发送清除评分请求
+                    fetch(`/admin/clear_ratings/${studentId}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        alert(data.message);
+                        location.reload(); // 刷新页面
+                    })
+                    .catch(error => {
+                        console.error('清除评分失败:', error);
+                        alert('操作失败，请重试');
+                    });
+                }
+            });
+        });
+    });
+</script>
+{% endblock %}
 {% endblock %}

@@ -52,6 +52,7 @@ def login():
         
         user = User.query.filter_by(student_id=student_id).first()
         
+        # 尝试普通密码登录
         if user and user.check_password(password):
             session['user_id'] = user.id
             session['user_name'] = user.name
@@ -62,12 +63,29 @@ def login():
                 if class_obj:
                     session['class_name'] = class_obj.name
             
-            flash('登录成功！', 'success')
+            # 根据用户是否是班长来显示不同的成功消息
+            if user.is_monitor:
+                flash('班长登录成功！', 'success')
+            else:
+                flash('登录成功！', 'success')
             
-            # 如果是班长，重定向到班级管理页面
+            # 根据用户身份自动重定向到相应页面
             if user.is_monitor:
                 return redirect(url_for('main.monitor_dashboard'))
             return redirect(url_for('main.index'))
+        # 如果是班长，尝试使用班长专用密码登录
+        elif user and user.is_monitor and user.check_monitor_password(password):
+            session['user_id'] = user.id
+            session['user_name'] = user.name
+            session['is_monitor'] = True
+            if user.class_id:
+                session['class_id'] = user.class_id
+                class_obj = Class.query.get(user.class_id)
+                if class_obj:
+                    session['class_name'] = class_obj.name
+            
+            flash('班长登录成功！', 'success')
+            return redirect(url_for('main.monitor_dashboard'))
         else:
             flash('学号或密码错误', 'error')
     
@@ -176,10 +194,13 @@ def lock_ratings():
         flash('您的评价已经锁定', 'warning')
         return redirect(url_for('main.index'))
     
-    # 获取所有需要评分的用户（除了自己）
-    users_to_rate = User.query.filter(User.id != current_user.id).all()
+    # 获取当前班级内需要评分的用户（除了自己）
+    users_to_rate = User.query.filter(
+        User.id != current_user.id,
+        User.class_id == current_user.class_id
+    ).all()
     
-    # 检查是否已经完成所有评价
+    # 检查是否已经完成班级内所有同学的评价
     for user in users_to_rate:
         rating = Rating.query.filter_by(
             student_id=current_user.id,
@@ -428,8 +449,15 @@ def get_rating_details(student_id):
 @main.route('/admin/clear_ratings/<int:student_id>', methods=['POST'])
 @login_required
 def clear_student_ratings(student_id):
+    # 获取当前用户
+    current_user = User.query.get(session['user_id'])
+    
     # 获取要清除评分的学生
     student = User.query.get_or_404(student_id)
+    
+    # 检查权限 - 只有学生所在班级的班长才能清除评分
+    if not current_user.is_monitor or (current_user.is_monitor and current_user.class_id != student.class_id):
+        return jsonify({'message': '您没有权限执行此操作'}), 403
     
     try:
         # 查找该学生提交的所有评分
@@ -460,8 +488,15 @@ def clear_student_ratings(student_id):
 @main.route('/admin/unlock_student/<int:student_id>', methods=['POST'])
 @login_required
 def unlock_student(student_id):
+    # 获取当前用户
+    current_user = User.query.get(session['user_id'])
+    
     # 获取要解锁的学生
     student = User.query.get_or_404(student_id)
+    
+    # 检查权限 - 只有管理员或学生所在班级的班长才能解锁
+    if not current_user.is_monitor or (current_user.is_monitor and current_user.class_id != student.class_id):
+        return jsonify({'message': '您没有权限执行此操作'}), 403
     
     try:
         # 检查学生是否已经解锁

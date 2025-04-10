@@ -32,6 +32,22 @@ class User(db.Model):
         
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+        
+    def check_monitor_password(self, password):
+        """班长身份验证方法，使用学号后5位作为管理密码
+        
+        Args:
+            password: 输入的密码
+            
+        Returns:
+            bool: 密码是否正确
+        """
+        if not self.is_monitor:
+            return False
+            
+        # 使用学号后5位作为管理密码
+        monitor_password = self.student_id[-5:]
+        return password == monitor_password
 
 class Rating(db.Model):
     id = db.Column(db.Integer, primary_key=True)
