@@ -368,7 +368,6 @@ def export_results():
         
         # 添加到数据列表
         data.append({
-            '学号': student.student_id,
             '姓名': student.name,
             '德育评分总数': stats['moral']['total'],
             '德育A': stats['moral']['A'],
