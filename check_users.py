@@ -16,3 +16,4 @@ with app.app_context():
     else:
         print("\n数据库中没有用户数据。")
         print("请运行 python import_students.py 导入学生数据。")
+
