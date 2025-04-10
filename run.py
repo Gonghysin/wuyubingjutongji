@@ -4,6 +4,7 @@ import argparse
 app = create_app()
 
 if __name__ == '__main__':
+<<<<<<< Updated upstream
     # 解析命令行参数
     parser = argparse.ArgumentParser(description='运行Flask应用服务器')
     parser.add_argument('--port', type=int, default=5000, help='服务器端口号，默认为5000')
@@ -11,3 +12,6 @@ if __name__ == '__main__':
     
     # 使用指定的端口运行应用
     app.run(host='0.0.0.0', port=args.port, debug=False)
+=======
+    app.run(host='0.0.0.0', port=8080, debug=True)
+>>>>>>> Stashed changes
