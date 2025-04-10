@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>班长管理面板</h2>
+        <div>
+            <a href="{{ url_for('main.upload_students') }}" class="btn btn-primary">
+                <i class="fas fa-upload"></i> 上传学生名单
+            </a>
+        </div>
+    </div>
+
+    {% if class_info %}
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="card-title mb-0">班级信息</h5>
+        </div>
+        <div class="card-body">
+            <h4>{{ class_info.name }}</h4>
+            <p>学生总数: {{ students|length }}</p>
+            <p>未完成评分学生数: {{ incomplete_students|length }}</p>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header bg-warning">
+            <h5 class="card-title mb-0">未完成评分的学生</h5>
+        </div>
+        <div class="card-body">
+            {% if incomplete_students %}
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>学号</th>
+                            <th>姓名</th>
+                            <th>状态</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for student in incomplete_students %}
+                        <tr>
+                            <td>{{ student.student_id }}</td>
+                            <td>{{ student.name }}</td>
+                            <td>
+                                <span class="badge bg-warning">未锁定评分</span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="alert alert-success">
+                所有学生都已完成评分！
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header bg-info text-white">
+            <h5 class="card-title mb-0">班级学生列表</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>学号</th>
+                            <th>姓名</th>
+                            <th>状态</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for student in students %}
+                        <tr>
+                            <td>{{ student.student_id }}</td>
+                            <td>{{ student.name }}</td>
+                            <td>
+                                {% if student.locked %}
+                                <span class="badge bg-success">已锁定评分</span>
+                                {% else %}
+                                <span class="badge bg-warning">未锁定评分</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    {% if student.locked %}
+                                    <button class="btn btn-outline-warning btn-sm unlock-student" data-student-id="{{ student.id }}" data-student-name="{{ student.name }}">
+                                        <i class="fas fa-unlock"></i> 解锁评分
+                                    </button>
+                                    {% endif %}
+                                    {% if not student.id == current_user.id %}
+                                    <button class="btn btn-outline-danger btn-sm clear-ratings" data-student-id="{{ student.id }}" data-student-name="{{ student.name }}">
+                                        <i class="fas fa-trash-alt"></i> 清除评分
+                                    </button>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-warning">
+        <h4>您尚未管理任何班级</h4>
+        <p>请上传学生名单创建班级</p>
+        <a href="{{ url_for('main.upload_students') }}" class="btn btn-primary mt-3">
+            <i class="fas fa-upload"></i> 上传学生名单
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // 解锁学生评分功能
+        const unlockButtons = document.querySelectorAll('.unlock-student');
+        unlockButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                const studentId = this.getAttribute('data-student-id');
+                const studentName = this.getAttribute('data-student-name');
+                
+                if (confirm(`确定要解锁 ${studentName} 的评分状态吗？`)) {
+                    // 发送解锁请求
+                    fetch(`/admin/unlock_student/${studentId}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        alert(data.message);
+                        location.reload(); // 刷新页面
+                    })
+                    .catch(error => {
+                        console.error('解锁失败:', error);
+                        alert('操作失败，请重试');
+                    });
+                }
+            });
+        });
+
+        // 清除学生评分功能
+        const clearButtons = document.querySelectorAll('.clear-ratings');
+        clearButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                const studentId = this.getAttribute('data-student-id');
+                const studentName = this.getAttribute('data-student-name');
+                
+                if (confirm(`确定要清除 ${studentName} 的所有评分记录吗？此操作不可恢复！`)) {
+                    // 发送清除评分请求
+                    fetch(`/admin/clear_ratings/${studentId}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        alert(data.message);
+                        location.reload(); // 刷新页面
+                    })
+                    .catch(error => {
+                        console.error('清除评分失败:', error);
+                        alert('操作失败，请重试');
+                    });
+                }
+            });
+        });
+    });
+</script>
+{% endblock %}
+{% endblock %}

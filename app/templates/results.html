@@ -1,7 +1,15 @@
 {% extends "base.html" %}
 
 {% block content %}
+{% if class_info %}
+<h1 class="mb-4">{{ class_info.name }} - 评分结果统计</h1>
+{% else %}
 <h1 class="mb-4">评分结果统计</h1>
+<div class="alert alert-warning">
+    <h4>您尚未被分配到班级</h4>
+    <p>请联系您的班长将您添加到班级名单中</p>
+</div>
+{% endif %}
 
 <div class="card mb-4">
     <div class="card-body">
@@ -341,4 +349,4 @@ function unlockStudent() {
     });
 }
 </script>
-{% endblock %} 
+{% endblock %}

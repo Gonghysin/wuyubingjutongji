@@ -1,13 +1,24 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, send_file, jsonify
-from .models import Rating, User
+from .models import Rating, User, Class
 from . import db
 from functools import wraps
 import logging
 import pandas as pd
 import io
+import os
 from datetime import datetime
+from werkzeug.utils import secure_filename
+import tempfile
+from import_students import import_students
 
 main = Blueprint('main', __name__)
+
+# 配置上传文件存储
+UPLOAD_FOLDER = tempfile.gettempdir()
+ALLOWED_EXTENSIONS = {'xlsx', 'xls'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def login_required(f):
     @wraps(f)
@@ -15,6 +26,21 @@ def login_required(f):
         if 'user_id' not in session:
             flash('请先登录', 'warning')
             return redirect(url_for('main.login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def monitor_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            flash('请先登录', 'warning')
+            return redirect(url_for('main.login'))
+        
+        user = User.query.get(session['user_id'])
+        if not user or not user.is_monitor:
+            flash('您没有班长权限', 'warning')
+            return redirect(url_for('main.index'))
+            
         return f(*args, **kwargs)
     return decorated_function
 
@@ -26,11 +52,40 @@ def login():
         
         user = User.query.filter_by(student_id=student_id).first()
         
+        # 尝试普通密码登录
         if user and user.check_password(password):
             session['user_id'] = user.id
             session['user_name'] = user.name
-            flash('登录成功！', 'success')
+            session['is_monitor'] = user.is_monitor
+            if user.class_id:
+                session['class_id'] = user.class_id
+                class_obj = Class.query.get(user.class_id)
+                if class_obj:
+                    session['class_name'] = class_obj.name
+            
+            # 根据用户是否是班长来显示不同的成功消息
+            if user.is_monitor:
+                flash('班长登录成功！', 'success')
+            else:
+                flash('登录成功！', 'success')
+            
+            # 根据用户身份自动重定向到相应页面
+            if user.is_monitor:
+                return redirect(url_for('main.monitor_dashboard'))
             return redirect(url_for('main.index'))
+        # 如果是班长，尝试使用班长专用密码登录
+        elif user and user.is_monitor and user.check_monitor_password(password):
+            session['user_id'] = user.id
+            session['user_name'] = user.name
+            session['is_monitor'] = True
+            if user.class_id:
+                session['class_id'] = user.class_id
+                class_obj = Class.query.get(user.class_id)
+                if class_obj:
+                    session['class_name'] = class_obj.name
+            
+            flash('班长登录成功！', 'success')
+            return redirect(url_for('main.monitor_dashboard'))
         else:
             flash('学号或密码错误', 'error')
     
@@ -46,8 +101,14 @@ def logout():
 @login_required
 def index():
     current_user = User.query.get(session['user_id'])
-    # 获取所有用户（包括自己）
-    users_to_rate = User.query.all()
+    
+    # 如果用户没有班级，提示用户联系班长
+    if not current_user.class_id:
+        flash('您尚未被分配到班级，请联系班长', 'warning')
+        return render_template('index.html', users=[], rated_student_ids=[], current_user=current_user, class_info=None)
+    
+    # 获取当前用户所在班级的所有用户
+    users_to_rate = User.query.filter_by(class_id=current_user.class_id).all()
     
     # 获取当前用户已评分的学生ID列表
     rated_student_ids = db.session.query(Rating.rated_student_id).filter(
@@ -55,7 +116,10 @@ def index():
     ).all()
     rated_student_ids = [r[0] for r in rated_student_ids]
     
-    return render_template('index.html', users=users_to_rate, rated_student_ids=rated_student_ids, current_user=current_user)
+    # 获取班级信息
+    class_info = Class.query.get(current_user.class_id)
+    
+    return render_template('index.html', users=users_to_rate, rated_student_ids=rated_student_ids, current_user=current_user, class_info=class_info)
 
 @main.route('/rate/<int:student_id>', methods=['GET', 'POST'])
 @login_required
@@ -66,6 +130,11 @@ def rate(student_id):
     # 检查用户是否已锁定
     if current_user.locked:
         flash('您的评价已锁定，无法修改', 'warning')
+        return redirect(url_for('main.index'))
+    
+    # 检查是否同一个班级
+    if current_user.class_id != rated_user.class_id:
+        flash('您只能给同班同学评分', 'warning')
         return redirect(url_for('main.index'))
     
     # 检查是否已经评分
@@ -125,10 +194,13 @@ def lock_ratings():
         flash('您的评价已经锁定', 'warning')
         return redirect(url_for('main.index'))
     
-    # 获取所有需要评分的用户（除了自己）
-    users_to_rate = User.query.filter(User.id != current_user.id).all()
+    # 获取当前班级内需要评分的用户（除了自己）
+    users_to_rate = User.query.filter(
+        User.id != current_user.id,
+        User.class_id == current_user.class_id
+    ).all()
     
-    # 检查是否已经完成所有评价
+    # 检查是否已经完成班级内所有同学的评价
     for user in users_to_rate:
         rating = Rating.query.filter_by(
             student_id=current_user.id,
@@ -149,17 +221,127 @@ def lock_ratings():
     
     return redirect(url_for('main.index'))
 
+@main.route('/monitor/dashboard')
+@login_required
+@monitor_required
+def monitor_dashboard():
+    current_user = User.query.get(session['user_id'])
+    
+    # 获取班长管理的班级
+    if current_user.class_id:
+        class_info = Class.query.get(current_user.class_id)
+        students = User.query.filter_by(class_id=current_user.class_id).all()
+    else:
+        class_info = None
+        students = []
+    
+    # 统计未完成评分的学生
+    incomplete_students = []
+    for student in students:
+        if not student.locked and student.id != current_user.id:  # 排除班长自己
+            incomplete_students.append(student)
+    
+    return render_template('monitor_dashboard.html', 
+                           class_info=class_info, 
+                           students=students, 
+                           incomplete_students=incomplete_students,
+                           current_user=current_user)
+
+@main.route('/monitor/upload_students', methods=['GET', 'POST'])
+@login_required
+@monitor_required
+def upload_students():
+    current_user = User.query.get(session['user_id'])
+    
+    if request.method == 'POST':
+        # 检查是否有文件
+        if 'file' not in request.files:
+            flash('没有选择文件', 'error')
+            return redirect(request.url)
+            
+        file = request.files['file']
+        if file.filename == '':
+            flash('没有选择文件', 'error')
+            return redirect(request.url)
+            
+        if file and allowed_file(file.filename):
+            # 保存文件到临时目录
+            filename = secure_filename(file.filename)
+            file_path = os.path.join(UPLOAD_FOLDER, filename)
+            file.save(file_path)
+            
+            # 导入学生名单
+            if current_user.class_id:
+                # 使用现有班级
+                result = import_students(file_path, class_id=current_user.class_id)
+            else:
+                # 创建新班级
+                class_name = request.form.get('class_name')
+                if not class_name:
+                    flash('请输入班级名称', 'error')
+                    return redirect(request.url)
+                    
+                result = import_students(file_path, class_name=class_name)
+                
+                # 如果成功创建班级，将班长关联到该班级
+                if result:
+                    # 查找新创建的班级
+                    new_class = Class.query.filter_by(name=class_name).first()
+                    if new_class:
+                        current_user.class_id = new_class.id
+                        db.session.commit()
+                        session['class_id'] = new_class.id
+                        session['class_name'] = new_class.name
+            
+            # 删除临时文件
+            os.remove(file_path)
+            
+            if result:
+                flash('学生名单导入成功', 'success')
+                return redirect(url_for('main.monitor_dashboard'))
+            else:
+                flash('学生名单导入失败', 'error')
+    
+    # 获取班长当前管理的班级
+    class_info = None
+    if current_user.class_id:
+        class_info = Class.query.get(current_user.class_id)
+    
+    return render_template('upload_students.html', class_info=class_info, current_user=current_user)
+
 @main.route('/results')
 @login_required
 def results():
-    students = User.query.all()
-    return render_template('results.html', students=students)
+    current_user = User.query.get(session['user_id'])
+    
+    # 如果用户没有班级，提示用户联系班长
+    if not current_user.class_id:
+        flash('您尚未被分配到班级，请联系班长', 'warning')
+        return render_template('results.html', students=[], class_info=None)
+    
+    # 只获取当前用户所在班级的学生
+    students = User.query.filter_by(class_id=current_user.class_id).all()
+    
+    # 获取班级信息
+    class_info = Class.query.get(current_user.class_id)
+    
+    return render_template('results.html', students=students, class_info=class_info)
 
 @main.route('/export_results')
 @login_required
 def export_results():
-    # 获取所有学生
-    students = User.query.all()
+    current_user = User.query.get(session['user_id'])
+    
+    # 如果用户没有班级，提示用户联系班长
+    if not current_user.class_id:
+        flash('您尚未被分配到班级，请联系班长', 'warning')
+        return redirect(url_for('main.results'))
+    
+    # 只获取当前用户所在班级的学生
+    students = User.query.filter_by(class_id=current_user.class_id).all()
+    
+    # 获取班级信息
+    class_info = Class.query.get(current_user.class_id)
     
     # 准备数据
     data = []
@@ -226,7 +408,8 @@ def export_results():
     # 准备文件下载
     output.seek(0)
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    filename = f'班级互评统计结果_{timestamp}.xlsx'
+    class_name = class_info.name if class_info else '未知班级'
+    filename = f'{class_name}_互评统计结果_{timestamp}.xlsx'
     
     return send_file(
         output,
@@ -238,7 +421,13 @@ def export_results():
 @main.route('/get_rating_details/<int:student_id>')
 @login_required
 def get_rating_details(student_id):
+    current_user = User.query.get(session['user_id'])
     student = User.query.get_or_404(student_id)
+    
+    # 检查是否同一个班级
+    if current_user.class_id != student.class_id:
+        return jsonify({'error': '您只能查看同班同学的评分详情'}), 403
+        
     received_ratings = student.received_ratings
     
     details = []
@@ -260,8 +449,15 @@ def get_rating_details(student_id):
 @main.route('/admin/clear_ratings/<int:student_id>', methods=['POST'])
 @login_required
 def clear_student_ratings(student_id):
+    # 获取当前用户
+    current_user = User.query.get(session['user_id'])
+    
     # 获取要清除评分的学生
     student = User.query.get_or_404(student_id)
+    
+    # 检查权限 - 只有学生所在班级的班长才能清除评分
+    if not current_user.is_monitor or (current_user.is_monitor and current_user.class_id != student.class_id):
+        return jsonify({'message': '您没有权限执行此操作'}), 403
     
     try:
         # 查找该学生提交的所有评分
@@ -292,8 +488,15 @@ def clear_student_ratings(student_id):
 @main.route('/admin/unlock_student/<int:student_id>', methods=['POST'])
 @login_required
 def unlock_student(student_id):
+    # 获取当前用户
+    current_user = User.query.get(session['user_id'])
+    
     # 获取要解锁的学生
     student = User.query.get_or_404(student_id)
+    
+    # 检查权限 - 只有管理员或学生所在班级的班长才能解锁
+    if not current_user.is_monitor or (current_user.is_monitor and current_user.class_id != student.class_id):
+        return jsonify({'message': '您没有权限执行此操作'}), 403
     
     try:
         # 检查学生是否已经解锁
@@ -310,4 +513,26 @@ def unlock_student(student_id):
     except Exception as e:
         db.session.rollback()
         logging.error(f"解锁失败: {str(e)}")
-        return jsonify({'message': f'解锁失败: {str(e)}'}), 500 
+        return jsonify({'message': f'解锁失败: {str(e)}'}), 500
+        
+@main.route('/admin/set_monitor/<int:student_id>', methods=['POST'])
+@login_required
+def set_monitor(student_id):
+    # 获取当前用户（应该是管理员）
+    current_user = User.query.get(session['user_id'])
+    
+    # 获取要设置为班长的学生
+    student = User.query.get_or_404(student_id)
+    
+    try:
+        # 设置为班长
+        student.is_monitor = True
+        db.session.commit()
+        
+        # 返回成功消息
+        return jsonify({'message': f'已成功将 {student.name} 设置为班长'})
+    
+    except Exception as e:
+        db.session.rollback()
+        logging.error(f"设置班长失败: {str(e)}")
+        return jsonify({'message': f'设置班长失败: {str(e)}'}), 500
