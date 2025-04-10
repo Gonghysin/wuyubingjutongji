@@ -479,3 +479,25 @@ def unlock_student(student_id):
         db.session.rollback()
         logging.error(f"解锁失败: {str(e)}")
         return jsonify({'message': f'解锁失败: {str(e)}'}), 500
+        
+@main.route('/admin/set_monitor/<int:student_id>', methods=['POST'])
+@login_required
+def set_monitor(student_id):
+    # 获取当前用户（应该是管理员）
+    current_user = User.query.get(session['user_id'])
+    
+    # 获取要设置为班长的学生
+    student = User.query.get_or_404(student_id)
+    
+    try:
+        # 设置为班长
+        student.is_monitor = True
+        db.session.commit()
+        
+        # 返回成功消息
+        return jsonify({'message': f'已成功将 {student.name} 设置为班长'})
+    
+    except Exception as e:
+        db.session.rollback()
+        logging.error(f"设置班长失败: {str(e)}")
+        return jsonify({'message': f'设置班长失败: {str(e)}'}), 500
